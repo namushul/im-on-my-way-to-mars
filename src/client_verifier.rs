@@ -1,18 +1,16 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use rustls::{Certificate, ClientCertVerified, ClientCertVerifier, DistinguishedNames, DnsName, Error, RootCertStore, HandshakeSignatureValid, SignatureScheme};
-use rustls::internal::msgs::handshake::{DistinguishedName, DigitallySignedStruct};
+use rustls::{Certificate, ClientCertVerified, ClientCertVerifier, DistinguishedNames, DnsName, Error, HandshakeSignatureValid, RootCertStore, SignatureScheme};
+use rustls::internal::msgs::handshake::{DigitallySignedStruct, DistinguishedName};
 
 /// Turns off client authentication.
-pub struct CustomClientAuth {
-    roots: RootCertStore,
-}
+pub struct CustomClientAuth {}
 
 impl CustomClientAuth {
-    /// Constructs a `NoClientAuth` and wraps it in an `Arc`.
-    pub fn new(roots: RootCertStore) -> Arc<dyn ClientCertVerifier> {
-        Arc::new(CustomClientAuth { roots })
+    /// Constructs a `CustomClientAuth` and wraps it in an `Arc`.
+    pub fn new() -> Arc<dyn ClientCertVerifier> {
+        Arc::new(CustomClientAuth {})
     }
 }
 

@@ -8,12 +8,9 @@ edition = "2018"
 [dependencies]
 rustls = { version = "0.20.0-beta2", features = ["dangerous_configuration"] } # Handling TLS
 rustls-pemfile = "0.2.1" # Reading .pem files
-structopt = "0.3" # System args
+structopt = "0.3" # Parsing system args
 ring = "0.17.0-alpha.10" # For hashing
 hex = "0.4.3" # For printing hex
 url = "2.2.2" # For parsing URLs in requests
-percent-encoding = "2.1.0"
-kv = { version = "0.22.0", features = ["msgpack-value"] }
-ctrlc = "3.2.0"
-serde = "1.0.129"
-rmp-serde = "1.0.0-beta.1"
+percent-encoding = "2.1.0" # For parsing the query string in URLs
+postgres = "0.19.1" # For persisting data using PostgreSQL

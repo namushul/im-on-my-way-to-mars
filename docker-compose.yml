@@ -1,0 +1,15 @@
+services:
+  gemini:
+    build: .
+    ports:
+      - "1965:1965"
+    volumes:
+      - .:/code
+    links:
+      - db
+  db:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: development-password
