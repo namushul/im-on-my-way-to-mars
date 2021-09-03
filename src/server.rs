@@ -1,12 +1,9 @@
-use std::time::Duration;
-
-use postgres::{Client, NoTls, Row};
-use postgres_types::{FromSql, ToSql};
 use ring::digest::Digest;
 use url::Url;
 
 use crate::banner::BANNER;
 use crate::response::Response;
+use crate::storage::{Storage, User};
 
 #[derive(Debug)]
 pub struct Server {}
@@ -18,91 +15,56 @@ pub struct Request {
     pub user_fingerprint: Digest,
 }
 
-fn serve_frontpage(request: Request, user: User) -> Response {
-    Response::success("text/gemini; lang=en".to_string(), format!("{}\r\n### 🐉 Hello, {}!\r\nHP: {}\r\n=> set-name Set name\r\n### Actions\r\n=> fight ⚔ Fight\r\n=> rest 🏥 Rest", BANNER, user.name, user.health))
+fn serve_frontpage(user: User) -> Response {
+    Response::success("text/gemini; lang=en".to_string(), format!("{banner}\r\n### 🐉 Hello, {name}!\r\nHP: {health}/{max_health}\r\n=> set-name 📝 Set name\r\n### Actions\r\n=> fight ⚔ Fight\r\n=> rest 🏥 Rest", banner = BANNER, name = user.name, health = user.health, max_health = user.max_health))
 }
 
-#[derive(Debug)]
-struct User {
-    id: i32,
-    name: String,
-    max_health: i32,
-    health: i32,
-}
 
 impl Server {
     pub fn handle_request(&self, request: Request) -> Response {
-        // todo: db pooling
-        let mut client = Client::connect("host=localhost user=postgres password=postgres", NoTls).unwrap();
+        let mut storage = match Storage::new() {
+            Ok(storage) => storage,
+            Err(_) => return Response::temporary_failure("Failed to connect to database".into()),
+        };
 
         let fingerprint = request.user_fingerprint.as_ref();
 
-        let user = match client.query("select id, name, max_health, health from users where fingerprint = $1", &[&fingerprint]).unwrap().first() {
-            Some(row) => {
-                let id = row.get(0);
-                let name = row.get(1);
-                let max_health = row.get(2);
-                let health = row.get(3);
-                User { id, name, max_health, health }
-            }
-            None => {
-                let name = "Alien".to_string();
-                let max_health = 10;
-                let health = 10;
-                match client.query(
-                    "insert into users (fingerprint, name, max_health, health) values ($1, $2, $3, $4) RETURNING id",
-                    &[&fingerprint, &name, &max_health, &health],
-                ).unwrap().first() {
-                    Some(row) => {
-                        let id = row.get(0);
-
-                        User { id, name, max_health, health }
-                    }
-                    None => {
-                        panic!("Expected id after insert!");
-                    }
-                }
-            }
+        let user = match storage.get_or_create_user(fingerprint) {
+            Ok(user) => user,
+            Err(_) => return Response::temporary_failure("Failed to get/create user".into()),
         };
         eprintln!("User: {:?}", user);
 
         match request.url.path() {
             "/" | "" => {
-                serve_frontpage(request, user)
+                serve_frontpage(user)
             }
             "/set-name" => {
                 match request.query {
                     None => Response::input("Set name".to_string()),
                     Some(name) => {
-                        client.execute(
-                            "update users set name = $1 where id = $2",
-                            &[&name, &user.id],
-                        ).unwrap();
-                        let user = User { name, ..user };
-
-                        Response::redirect_temporary("/".to_string())
+                        match storage.update_name(user, name) {
+                            Ok(_user) => Response::redirect_temporary("/".to_string()),
+                            Err(_) => Response::temporary_failure("Failed to update user".into())
+                        }
                     }
                 }
             }
             "/fight" => {
                 let health = user.health - 1;
-                client.execute(
-                    "update users set health = $1 where id = $2",
-                    &[&health, &user.id],
-                ).unwrap();
-                let user = User { health, ..user };
-
-                Response::redirect_temporary("/".to_string())
+                if health < 0 { return Response::redirect_temporary("/".to_string()); }
+                match storage.update_health(user, health) {
+                    Ok(_user) => Response::redirect_temporary("/".to_string()),
+                    Err(_) => Response::temporary_failure("Failed to update user".into())
+                }
             }
             "/rest" => {
                 let health = user.health + 1;
-                client.execute(
-                    "update users set health = $1 where id = $2",
-                    &[&health, &user.id],
-                ).unwrap();
-                let user = User { health, ..user };
-
-                Response::redirect_temporary("/".to_string())
+                if health > user.max_health { return Response::redirect_temporary("/".to_string()); }
+                match storage.update_health(user, health) {
+                    Ok(_user) => Response::redirect_temporary("/".to_string()),
+                    Err(_) => Response::temporary_failure("Failed to update user".into())
+                }
             }
             _ => Response::not_found("".to_string())
         }

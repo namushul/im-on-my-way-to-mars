@@ -1,18 +1,18 @@
 use std::{io, thread};
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
+use std::net::TcpListener;
+use std::sync::Arc;
 
 use percent_encoding::percent_decode;
-use ring::digest::{Digest, SHA256};
-use rustls::{Connection, RootCertStore, ServerConnection};
+use ring::digest::SHA256;
+use rustls::Connection;
 use structopt::StructOpt;
 
 use crate::Args;
-use crate::client_verifier::CustomClientAuth;
-use crate::server::{Request, Server};
+use crate::client_verifier::AcceptAnyClientCert;
 use crate::response::Response;
+use crate::server::{Request, Server};
 
 fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
     let certfile = File::open(filename).expect("cannot open certificate file");
@@ -46,7 +46,7 @@ fn load_private_key(filename: &str) -> rustls::PrivateKey {
 fn make_config(keyfile_path: String, certfile_path: String) -> Arc<rustls::ServerConfig> {
     let privkey = load_private_key(&keyfile_path);
     let certs = load_certs(&certfile_path);
-    let client_auth = CustomClientAuth::new();
+    let client_auth = AcceptAnyClientCert::new();
 
     let mut config = rustls::ServerConfig::builder()
         .with_safe_defaults()
@@ -73,34 +73,47 @@ pub fn run() {
                     let server = Server {};
                     match rustls::ServerConnection::new(tls_config) {
                         Ok(mut tls_conn) => {
+                            eprintln!("Performing handshake");
                             while tls_conn.is_handshaking() {
-                                eprintln!("We handshaking {}", tls_conn.is_handshaking());
-                                eprintln!("We reading {}", tls_conn.wants_read());
-                                eprintln!("We writing {}", tls_conn.wants_write());
-                                eprintln!();
-
                                 if tls_conn.wants_read() {
                                     eprintln!("Reading...");
                                     match tls_conn.read_tls(&mut stream) {
                                         Ok(0) => {
-                                            todo!("Conn closed");
+                                            panic!("Connection closed while handshaking");
                                         }
                                         Ok(count) => {
-                                            eprintln!("Count {}", count);
+                                            eprintln!("Read {} bytes", count);
                                             let io_state = tls_conn.process_new_packets().unwrap();
                                             eprintln!("{:?}", io_state);
                                         }
                                         Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
                                         Err(e) => panic!("{}", e),
                                     };
-                                    eprintln!("Read");
                                 }
 
                                 if tls_conn.wants_write() {
                                     eprintln!("Writing...");
-                                    tls_conn.write_tls(&mut stream).unwrap();
-                                    eprintln!("Wrote");
+                                    match tls_conn.write_tls(&mut stream) {
+                                        Ok(count) => eprintln!("Wrote {} bytes", count),
+                                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                                        Err(e) => panic!("{}", e),
+                                    };
                                 }
+                            }
+                            eprintln!("Handshake successful");
+
+                            while tls_conn.wants_read() {
+                                eprintln!("Reading...");
+                                match tls_conn.read_tls(&mut stream) {
+                                    Ok(0) => {}
+                                    Ok(count) => {
+                                        eprintln!("Read {} bytes", count);
+                                        let io_state = tls_conn.process_new_packets().unwrap();
+                                        eprintln!("{:?}", io_state);
+                                    }
+                                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                                    Err(e) => panic!("{}", e),
+                                };
                             }
 
                             let response = match tls_conn.peer_certificates() {
@@ -110,23 +123,38 @@ pub fn run() {
                                             let fingerprint = ring::digest::digest(&SHA256, peer_certificate.0.as_slice());
                                             tls_conn.process_new_packets().unwrap();
                                             let mut buffer = [0; 1024 + 2];
-                                            let count = tls_conn.reader().read(&mut buffer).unwrap();
+                                            let mut count = 0;
+                                            while count == 0 {
+                                                count = match tls_conn.reader().read(&mut buffer) {
+                                                    Ok(count) => count,
+                                                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => 0,
+                                                    Err(e) => panic!("{}", e),
+                                                };
+                                            }
                                             match std::str::from_utf8(&buffer[0..count]) {
                                                 Ok(request) => {
-                                                    let (url, _) = request.split_once("\r\n").unwrap();
-                                                    let url = url::Url::parse(url).unwrap();
-                                                    eprintln!("Request: {}", url);
-                                                    eprintln!("Request-path: {}", url.path());
-                                                    eprintln!("Request-query: {:?}", url.query_pairs().map(|(k, v)| { format!("{}: {}", k, v) }).collect::<Vec<String>>());
-                                                    let whole_query = url.query().map(|x| percent_decode(x.as_bytes()).decode_utf8().unwrap().into());
-                                                    eprintln!("Request-query: {:?}", whole_query);
+                                                    match request.split_once("\r\n") {
+                                                        Some((url, _)) => {
+                                                            match url::Url::parse(url) {
+                                                                Ok(url) => {
+                                                                    eprintln!("Request: {}", url);
+                                                                    eprintln!("Request-path: {}", url.path());
+                                                                    eprintln!("Request-query: {:?}", url.query_pairs().map(|(k, v)| { format!("{}: {}", k, v) }).collect::<Vec<String>>());
+                                                                    let whole_query = url.query().map(|x| percent_decode(x.as_bytes()).decode_utf8().unwrap().into());
+                                                                    eprintln!("Request-query: {:?}", whole_query);
 
-                                                    let request = Request {
-                                                        url,
-                                                        query: whole_query,
-                                                        user_fingerprint: fingerprint,
-                                                    };
-                                                    server.handle_request(request)
+                                                                    let request = Request {
+                                                                        url,
+                                                                        query: whole_query,
+                                                                        user_fingerprint: fingerprint,
+                                                                    };
+                                                                    server.handle_request(request)
+                                                                }
+                                                                Err(_) => Response::bad_request("Failed to parse url in request".to_string()),
+                                                            }
+                                                        }
+                                                        None => Response::bad_request("Failed to parse request, expected a single \\r\\n to be present".to_string()),
+                                                    }
                                                 }
                                                 Err(_) => Response::bad_request("Failed to parse utf8 string".to_string()),
                                             }

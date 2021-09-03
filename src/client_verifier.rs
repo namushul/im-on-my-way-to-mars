@@ -1,20 +1,18 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use rustls::{Certificate, ClientCertVerified, ClientCertVerifier, DistinguishedNames, DnsName, Error, HandshakeSignatureValid, RootCertStore, SignatureScheme};
-use rustls::internal::msgs::handshake::{DigitallySignedStruct, DistinguishedName};
+use rustls::{Certificate, ClientCertVerified, ClientCertVerifier, DistinguishedNames, DnsName, Error};
 
-/// Turns off client authentication.
-pub struct CustomClientAuth {}
+/// Enables client authentication without verifying client certificates.
+pub struct AcceptAnyClientCert {}
 
-impl CustomClientAuth {
-    /// Constructs a `CustomClientAuth` and wraps it in an `Arc`.
+impl AcceptAnyClientCert {
     pub fn new() -> Arc<dyn ClientCertVerifier> {
-        Arc::new(CustomClientAuth {})
+        Arc::new(AcceptAnyClientCert {})
     }
 }
 
-impl ClientCertVerifier for CustomClientAuth {
+impl ClientCertVerifier for AcceptAnyClientCert {
     fn offer_client_auth(&self) -> bool {
         true
     }
@@ -23,18 +21,18 @@ impl ClientCertVerifier for CustomClientAuth {
         Some(false)
     }
 
-    fn client_auth_root_subjects(&self, sni: Option<&DnsName>) -> Option<DistinguishedNames> {
+    fn client_auth_root_subjects(&self, _sni: Option<&DnsName>) -> Option<DistinguishedNames> {
         Some(vec![])
     }
 
     fn verify_client_cert(
         &self,
-        end_entity: &Certificate,
-        intermediates: &[Certificate],
-        sni: Option<&DnsName>,
-        now: SystemTime,
+        _end_entity: &Certificate,
+        _intermediates: &[Certificate],
+        _sni: Option<&DnsName>,
+        _now: SystemTime,
     ) -> Result<ClientCertVerified, Error> {
-        // TODO:
+        // TODO: Replace this tls with openssl tls
         Ok(ClientCertVerified::assertion())
     }
 }

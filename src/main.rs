@@ -6,6 +6,7 @@ mod server;
 mod gemini;
 mod banner;
 mod response;
+mod storage;
 
 #[derive(StructOpt, Debug)]
 #[structopt()]
