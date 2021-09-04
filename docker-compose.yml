@@ -3,8 +3,6 @@ services:
     build: .
     ports:
       - "1965:1965"
-    volumes:
-      - .:/code
     links:
       - db
   db:

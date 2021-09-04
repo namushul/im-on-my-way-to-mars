@@ -2,12 +2,18 @@ use std::error;
 
 use postgres::{Client, NoTls};
 
+pub mod locations {
+    pub const BASTOW: i32 = 0;
+    pub const BASTOW_WOODLANDS: i32 = 1;
+}
+
 #[derive(Debug)]
 pub struct User {
     pub id: i32,
     pub name: String,
     pub max_health: i32,
     pub health: i32,
+    pub location_id: i32,
 }
 
 pub struct Storage {
@@ -32,49 +38,34 @@ impl Storage {
         Ok(Storage { client: Client::connect(CONFIG, NoTls)? })
     }
 
-    pub fn get_or_create_user(&mut self, fingerprint: &[u8]) -> Result<User, Error> {
-        match self.get_user(fingerprint) {
-            Ok(user) => Ok(user),
-            Err(Error::NotFound) => Ok(self.create_user(fingerprint)?),
-            Err(error) => Err(error)
-        }
-    }
-
-    pub fn create_user(&mut self, fingerprint: &[u8]) -> Result<User, Error> {
-        let name = "Alien".to_string();
+    pub fn create_user(&mut self, fingerprint: &[u8], name: String) -> Result<User, Error> {
         let max_health = 10;
         let health = 10;
+        let location_id = locations::BASTOW;
         match self.client.query(
-            "insert into users (fingerprint, name, max_health, health) values ($1, $2, $3, $4) RETURNING id",
-            &[&fingerprint, &name, &max_health, &health],
+            "insert into users (fingerprint, name, max_health, health, location_id) values ($1, $2, $3, $4, $5) RETURNING id",
+            &[&fingerprint, &name, &max_health, &health, &location_id],
         )?.first() {
             Some(row) => {
                 let id = row.get(0);
-                Ok(User { id, name, max_health, health })
+                Ok(User { id, name, max_health, health, location_id })
             }
             None => Err(Error::MissingPrimaryKeyRow)
         }
     }
 
     pub fn get_user(&mut self, fingerprint: &[u8]) -> Result<User, Error> {
-        match self.client.query("select id, name, max_health, health from users where fingerprint = $1", &[&fingerprint])?.first() {
+        match self.client.query("select id, name, max_health, health, location_id from users where fingerprint = $1", &[&fingerprint])?.first() {
             Some(row) => {
                 let id = row.get(0);
                 let name = row.get(1);
                 let max_health = row.get(2);
                 let health = row.get(3);
-                Ok(User { id, name, max_health, health })
+                let location_id = row.get(4);
+                Ok(User { id, name, max_health, health, location_id })
             }
             None => Err(Error::NotFound)
         }
-    }
-
-    pub fn update_name(&mut self, user: User, name: String) -> Result<User, Error> {
-        self.client.execute(
-            "update users set name = $1 where id = $2",
-            &[&name, &user.id],
-        )?;
-        Ok(User { name, ..user })
     }
 
     pub fn update_health(&mut self, user: User, health: i32) -> Result<User, Error> {
@@ -83,5 +74,13 @@ impl Storage {
             &[&health, &user.id],
         )?;
         Ok(User { health, ..user })
+    }
+
+    pub fn update_location_id(&mut self, user: User, location_id: i32) -> Result<User, Error> {
+        self.client.execute(
+            "update users set location_id = $1 where id = $2",
+            &[&location_id, &user.id],
+        )?;
+        Ok(User { location_id, ..user })
     }
 }

@@ -1,5 +1,3 @@
-#![feature(backtrace)]
-
 use std::net::SocketAddr;
 
 use structopt::StructOpt;
