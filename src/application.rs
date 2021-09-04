@@ -121,8 +121,7 @@ impl Server {
                 }
             }
             ["rest"] => {
-                let health = user.health + 1;
-                if health > user.max_health { return Response::redirect_temporary("/".to_string()); }
+                let health = user.max_health;
                 match storage.update_health(user, health) {
                     Ok(_user) => Response::redirect_temporary("/".to_string()),
                     Err(_) => Response::temporary_failure("Failed to update user".into())
