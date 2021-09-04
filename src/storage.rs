@@ -1,4 +1,4 @@
-use std::error;
+use std::{env, error};
 
 use postgres::{Client, NoTls};
 
@@ -34,8 +34,10 @@ impl From<postgres::Error> for Error {
 impl Storage {
     // TODO: db pooling
     pub fn new() -> Result<Storage, Error> {
-        const CONFIG: &str = "host=localhost user=postgres password=postgres";
-        Ok(Storage { client: Client::connect(CONFIG, NoTls)? })
+        let host = env::var("POSTGRES_HOST").unwrap_or("localhost".to_string());
+        let user = env::var("POSTGRES_USER").unwrap_or("postgres".to_string());
+        let password = env::var("POSTGRES_PASSWORD").unwrap_or("postgres".to_string());
+        Ok(Storage { client: Client::connect(format!("host={} user={} password={}", host, user, password).as_str(), NoTls)? })
     }
 
     pub fn create_user(&mut self, fingerprint: &[u8], name: String) -> Result<User, Error> {

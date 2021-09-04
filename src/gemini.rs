@@ -1,5 +1,4 @@
 use std::convert::TryInto;
-use std::error::Error;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::ops::Deref;
@@ -19,7 +18,6 @@ fn make_acceptor(private_key_path: String, certificates_path: String) -> Arc<Ssl
     let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
     acceptor.set_min_proto_version(Some(SslVersion::TLS1_2)).unwrap();
     acceptor.set_verify_callback(SslVerifyMode::PEER, |_ver, store| {
-        println!("{:?}", store.error().backtrace());
         match store.error().as_raw() {
             18 => true, // Certificate self-signed
             _ => false

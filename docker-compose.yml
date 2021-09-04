@@ -5,9 +5,24 @@ services:
       - "1965:1965"
     links:
       - db
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    secrets:
+      - namushul_certificate.pem
+      - namushul_private_key.pem
   db:
     image: postgres
     restart: always
+    volumes:
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/seed.sql
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: development-password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+secrets:
+  namushul_certificate.pem:
+    file: namushul_certificate.pem
+  namushul_private_key.pem:
+    file: namushul_private_key.pem

@@ -8,7 +8,6 @@ edition = "2018"
 [dependencies]
 openssl = "0.10.36" # Handling TLS
 structopt = "0.3" # Parsing system args
-hex = "0.4.3" # For printing hex
 url = "2.2.2" # For parsing URLs in requests
 percent-encoding = "2.1.0" # For parsing the query string in URLs
 postgres = "0.19.1" # For persisting data using PostgreSQL
