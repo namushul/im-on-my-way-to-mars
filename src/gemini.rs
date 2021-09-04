@@ -14,55 +14,41 @@ use crate::client_verifier::AcceptAnyClientCert;
 use crate::response::Response;
 use crate::server::{Request, Server};
 
-fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
-    let certfile = File::open(filename).expect("cannot open certificate file");
-    let mut reader = BufReader::new(certfile);
+fn load_certificates(path: &str) -> Vec<rustls::Certificate> {
+    let file = File::open(path).expect("Cannot open certificate file");
+    let mut reader = BufReader::new(file);
     rustls_pemfile::certs(&mut reader)
-        .unwrap()
+        .expect("Cannot parse certificate PEM file")
         .iter()
         .map(|v| rustls::Certificate(v.clone()))
         .collect()
 }
 
-fn load_private_key(filename: &str) -> rustls::PrivateKey {
-    let keyfile = File::open(filename).expect("cannot open private key file");
-    let mut reader = BufReader::new(keyfile);
-
+fn load_private_key(path: &str) -> rustls::PrivateKey {
+    let file = File::open(path).expect("Cannot open private key file");
+    let mut reader = BufReader::new(file);
     loop {
-        match rustls_pemfile::read_one(&mut reader).expect("cannot parse private key .pem file") {
+        match rustls_pemfile::read_one(&mut reader).expect("Cannot parse private key PEM file") {
             Some(rustls_pemfile::Item::RSAKey(key)) => return rustls::PrivateKey(key),
             Some(rustls_pemfile::Item::PKCS8Key(key)) => return rustls::PrivateKey(key),
-            None => break,
+            None => panic!("No keys found in {:?} (encrypted keys not supported)", path),
             _ => {}
         }
     }
-
-    panic!(
-        "no keys found in {:?} (encrypted keys not supported)",
-        filename
-    );
 }
 
-fn make_config(keyfile_path: String, certfile_path: String) -> Arc<rustls::ServerConfig> {
-    let privkey = load_private_key(&keyfile_path);
-    let certs = load_certs(&certfile_path);
-    let client_auth = AcceptAnyClientCert::new();
-
-    let mut config = rustls::ServerConfig::builder()
+fn make_config(private_key_path: String, certificate_path: String) -> Arc<rustls::ServerConfig> {
+    Arc::new(rustls::ServerConfig::builder()
         .with_safe_defaults()
-        .with_client_cert_verifier(client_auth)
-        .with_single_cert(certs, privkey)
-        .expect("bad certificates/private key");
-
-    config.key_log = Arc::new(rustls::KeyLogFile::new());
-
-    Arc::new(config)
+        .with_client_cert_verifier(AcceptAnyClientCert::new())
+        .with_single_cert(load_certificates(&certificate_path), load_private_key(&private_key_path))
+        .expect("Bad certificates/private key"))
 }
 
 pub fn run() {
-    let Args { address, keyfile_path, certfile_path } = Args::from_args();
+    let Args { address, private_key_path, certificate_path } = Args::from_args();
     let listener = TcpListener::bind(address).unwrap();
-    let tls_config = make_config(keyfile_path, certfile_path);
+    let tls_config = make_config(private_key_path, certificate_path);
 
     loop {
         match listener.accept() {
