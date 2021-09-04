@@ -1,6 +1,12 @@
+//! This handles the business logic, decoupled from the actual transport layer.
+
+use std::env;
+use std::thread::sleep;
+use std::time::Duration;
+
 use url::Url;
 
-use crate::response::Response;
+use crate::response::{Language, MediaType, Response};
 use crate::storage::{locations, Storage, User};
 use crate::storage;
 
@@ -18,8 +24,8 @@ const BANNER: &str = include_str!("banner.txt");
 
 fn serve_landing() -> Response {
     Response::success(
-        "text/gemini; lang=en".to_string(),
-        format!("{banner}\r\nYou have reached the enchanted land of Namushul.\r\n\r\nAre you ready to begin your adventure?\r\n=> join Enter", banner = BANNER),
+        MediaType::gemini(Some(Language::english())),
+        format!("{banner}\r\nYou have reached the enchanted land of Namushul.\r\n\r\nAre you ready to begin your adventure?\r\n=> /adventure Enter\r\n=> /about About", banner = BANNER),
     )
 }
 
@@ -27,23 +33,23 @@ fn serve_landing() -> Response {
 
 fn bastow(user: User) -> Response {
     Response::success(
-        "text/gemini; lang=en".to_string(),
+        MediaType::gemini(Some(Language::english())),
         format!("\
         ### {name}\r\nHP: {health}/{max_health}\r\n\
         ### Bastow \r\nYou are in the small port town of Bastow. The town has an inn. A small gravel path leads out of town and into the forest.\r\n\
-        ### Travel\r\n=> travel/{bastow_woodlands} 🌳 Follow the path into the forest.\r\n\
-        ### Actions\r\n=> rest 🛏 Rest at the inn.", name = user.name, health = user.health, max_health = user.max_health, bastow_woodlands = locations::BASTOW_WOODLANDS),
+        ### Travel\r\n=> /adventure/travel/{bastow_woodlands} 🌳 Follow the path into the forest.\r\n\
+        ### Actions\r\n=> /adventure/rest 🛏 Rest at the inn.", name = user.name, health = user.health, max_health = user.max_health, bastow_woodlands = locations::BASTOW_WOODLANDS),
     )
 }
 
 fn bastow_woodlands(user: User) -> Response {
     Response::success(
-        "text/gemini; lang=en".to_string(),
+        MediaType::gemini(Some(Language::english())),
         format!("\
         ### {name}\r\nHP: {health}/{max_health}\r\n\
         ### Bastow Woodlands \r\nYou are in Bastow Woodland. You see nothing of interest.\r\n\
-        ### Travel\r\n=> travel/{bastow} 👣 Go back to Bastow.\r\n\
-        ### Actions\r\n=> fight 👊 Fight slimes.", name = user.name, health = user.health, max_health = user.max_health, bastow = locations::BASTOW),
+        ### Travel\r\n=> /adventure/travel/{bastow} 👣 Go back to Bastow.\r\n\
+        ### Actions\r\n=> /adventure/fight 👊 Fight slimes.", name = user.name, health = user.health, max_health = user.max_health, bastow = locations::BASTOW),
     )
 }
 
@@ -62,15 +68,37 @@ impl Server {
         eprintln!("Request-query: {:?}", request.url.query_pairs().map(|(k, v)| { format!("{}: {}", k, v) }).collect::<Vec<String>>());
         eprintln!("Request-query: {:?}", request.query);
 
+        let simulate_latency = env::var("SIMULATE_LATENCY").unwrap_or("false".to_string());
+        if simulate_latency == "true" {
+            sleep(Duration::from_secs(1));
+        }
+
+        let path_segments = match request.url.path_segments() {
+            None => vec![],
+            Some(segments) => segments.collect::<Vec<_>>()
+        };
+        eprintln!("{:?}", path_segments);
+
+        match path_segments[..] {
+            [""] | [] => {
+                return serve_landing()
+            }
+            ["about"] => {
+                let user_count = "1337";
+                let last_activity = "1337 minutes ago";
+                let uptime = "1337 minutes";
+                return Response::success(
+                    MediaType::gemini(Some(Language::english())),
+                    format!("### About\r\n👥 Users: {} · 🕐 Activity: {} ago · 🕗 Uptime: {}\r\n", user_count, last_activity, uptime),
+                )
+            },
+            _ => {}
+        }
+
         let fingerprint = &match request.peer_fingerprint {
             Some(f) => f,
             None => {
-                match request.url.path() {
-                    "/" | "" => {
-                        return serve_landing();
-                    }
-                    _ => return Response::client_certificate_required("Hello brave traveler. To venture further into this land you must present a certificate.".to_string())
-                }
+                return Response::client_certificate_required("Hello brave traveler. To venture further into this land you must present a certificate.".to_string());
             }
         };
 
@@ -100,34 +128,26 @@ impl Server {
             }
         };
 
-        let path_segments = match request.url.path_segments() {
-            None => vec![],
-            Some(segments) => segments.collect::<Vec<_>>()
-        };
-        eprintln!("{:?}", path_segments);
         match path_segments[..] {
-            [""] | [] => {
+            ["adventure"] => {
                 status_page(user)
             }
-            ["join"] => {
-                Response::redirect_temporary("/".to_string())
-            }
-            ["fight"] => {
+            ["adventure", "fight"] => {
                 let health = user.health - 1;
-                if health < 0 { return Response::redirect_temporary("/".to_string()); }
+                if health < 0 { return Response::redirect_temporary("/adventure".to_string()); }
                 match storage.update_health(user, health) {
-                    Ok(_user) => Response::redirect_temporary("/".to_string()),
+                    Ok(_user) => Response::redirect_temporary("/adventure".to_string()),
                     Err(_) => Response::temporary_failure("Failed to update user".into())
                 }
             }
-            ["rest"] => {
+            ["adventure", "rest"] => {
                 let health = user.max_health;
                 match storage.update_health(user, health) {
-                    Ok(_user) => Response::redirect_temporary("/".to_string()),
+                    Ok(_user) => Response::redirect_temporary("/adventure".to_string()),
                     Err(_) => Response::temporary_failure("Failed to update user".into())
                 }
             }
-            ["travel", destination_id] => {
+            ["adventure", "travel", destination_id] => {
                 let destination_id = match destination_id.parse::<i32>() {
                     Ok(destination_id) => destination_id,
                     Err(_) => return Response::bad_request("Destination must be an integer".to_string())
@@ -146,7 +166,7 @@ impl Server {
                     _ => return Response::temporary_failure("Invalid user location".to_string())
                 }
                 match storage.update_location_id(user, destination_id) {
-                    Ok(_user) => Response::redirect_temporary("/".to_string()),
+                    Ok(_user) => Response::redirect_temporary("/adventure".to_string()),
                     Err(_) => Response::temporary_failure("Failed to update user".into())
                 }
             }

@@ -1,3 +1,5 @@
+//! Communication with the database only happens through this module.
+
 use std::{env, error};
 
 use postgres::{Client, NoTls};

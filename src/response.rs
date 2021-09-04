@@ -1,5 +1,24 @@
 use std::time::Duration;
 
+pub struct Language(String);
+
+impl Language {
+    pub fn english() -> Self {
+        Language("en".to_string())
+    }
+}
+
+pub struct MediaType(String);
+
+impl MediaType {
+    pub fn gemini(language: Option<Language>) -> Self {
+        match language {
+            Some(language) => MediaType(format!("text/gemini; lang={}", language.0).to_string()),
+            None => MediaType("text/gemini".to_string())
+        }
+    }
+}
+
 pub struct Response(String);
 
 // TODO: Some kind of check to ensure meta is less than 1024 maybe?
@@ -31,8 +50,8 @@ impl Response {
 
     /// The request was handled successfully and a response body will follow the response header.
     /// The <META> line is a MIME media type which applies to the response body.
-    pub fn success(mime_type: String, contents: String) -> Response {
-        Response(format!("20 {}\r\n{}", mime_type, contents))
+    pub fn success(media_type: MediaType, contents: String) -> Response {
+        Response(format!("20 {}\r\n{}", media_type.0, contents))
     }
 
     // 3x (REDIRECT)

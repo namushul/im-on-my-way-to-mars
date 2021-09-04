@@ -1,3 +1,7 @@
+//! Handles running a gemini server.
+//! This mostly consists of handling the TCP listener and the TLS.
+//! The gemini part only makes up a small part in comparison.
+
 use std::convert::TryInto;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
