@@ -1,19 +1,20 @@
+#![feature(backtrace)]
+
 use std::net::SocketAddr;
+
 use structopt::StructOpt;
 
-mod client_verifier;
-mod server;
+mod application;
 mod gemini;
-mod banner;
 mod response;
 mod storage;
 
 #[derive(StructOpt, Debug)]
 #[structopt()]
-struct Args {
+pub struct Args {
     /// Path to a certificate file encoded in PEM format for TLS connections
     #[structopt()]
-    certificate_path: String,
+    certificates_path: String,
 
     /// Path to a PKCS 8 or RSA keyfile encoded in PEM format for TLS connections
     #[structopt()]
@@ -26,5 +27,5 @@ struct Args {
 
 fn main() {
     eprintln!("Starting...");
-    gemini::run();
+    gemini::run(Args::from_args());
 }

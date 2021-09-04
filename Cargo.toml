@@ -1,15 +1,13 @@
 [package]
-name = "im-on-my-way-to-mars"
+name = "namushul"
 version = "0.1.0"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rustls = { version = "0.20.0-beta2", features = ["dangerous_configuration"] } # Handling TLS
-rustls-pemfile = "0.2.1" # Reading .pem files
+openssl = "0.10.36" # Handling TLS
 structopt = "0.3" # Parsing system args
-ring = "0.17.0-alpha.10" # For hashing
 hex = "0.4.3" # For printing hex
 url = "2.2.2" # For parsing URLs in requests
 percent-encoding = "2.1.0" # For parsing the query string in URLs

@@ -1,8 +1,6 @@
 FROM rust:latest
 WORKDIR /usr/src/im-on-my-way-to-mars
 EXPOSE 1965
-COPY development_private_key.pem .
-COPY development_private_key.pem .
 COPY Cargo.toml .
 COPY Cargo.lock .
 

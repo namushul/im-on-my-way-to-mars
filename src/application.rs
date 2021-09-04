@@ -1,7 +1,5 @@
-use ring::digest::Digest;
 use url::Url;
 
-use crate::banner::BANNER;
 use crate::response::Response;
 use crate::storage::{Storage, User};
 
@@ -12,8 +10,10 @@ pub struct Server {}
 pub struct Request {
     pub url: Url,
     pub query: Option<String>,
-    pub user_fingerprint: Digest,
+    pub peer_fingerprint: Option<[u8; 32]>,
 }
+
+const BANNER: &str = include_str!("banner.txt");
 
 fn serve_frontpage(user: User) -> Response {
     Response::success("text/gemini; lang=en".to_string(), format!("{banner}\r\n### 🐉 Hello, {name}!\r\nHP: {health}/{max_health}\r\n=> set-name 📝 Set name\r\n### Actions\r\n=> fight ⚔ Fight\r\n=> rest 🏥 Rest", banner = BANNER, name = user.name, health = user.health, max_health = user.max_health))
@@ -22,12 +22,20 @@ fn serve_frontpage(user: User) -> Response {
 
 impl Server {
     pub fn handle_request(&self, request: Request) -> Response {
+        eprintln!("Request: {}", request.url);
+        eprintln!("Request-path: {}", request.url.path());
+        eprintln!("Request-query: {:?}", request.url.query_pairs().map(|(k, v)| { format!("{}: {}", k, v) }).collect::<Vec<String>>());
+        eprintln!("Request-query: {:?}", request.query);
+
         let mut storage = match Storage::new() {
             Ok(storage) => storage,
             Err(_) => return Response::temporary_failure("Failed to connect to database".into()),
         };
 
-        let fingerprint = request.user_fingerprint.as_ref();
+        let fingerprint = &match request.peer_fingerprint {
+            Some(f) => f,
+            None => return Response::client_certificate_required("".to_string())
+        };
 
         let user = match storage.get_or_create_user(fingerprint) {
             Ok(user) => user,
