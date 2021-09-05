@@ -82,6 +82,14 @@ impl Storage {
         }
     }
 
+    pub fn update_name(&mut self, user: User, name: String) -> Result<User, Error> {
+        self.client.execute(
+            "update users set name = $1 where id = $2",
+            &[&name, &user.id],
+        )?;
+        Ok(User { name, ..user })
+    }
+
     pub fn update_health(&mut self, user: User, health: i32) -> Result<User, Error> {
         self.client.execute(
             "update users set health = $1 where id = $2",

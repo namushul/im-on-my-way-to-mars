@@ -31,14 +31,21 @@ pub struct Request {
 
 const BANNER: &str = include_str!("banner.txt");
 
-fn serve_landing() -> Response {
+fn serve_landing(user: Option<User>) -> Response {
+    let account_link = match user {
+        Some(_) => "=> /account Account\r\n",
+        None => ""
+    };
     Response::success(
         MediaType::gemini(Some(Language::english())),
-        format!("{banner}\r\nYou have reached the enchanted land of Namushul.\r\n\r\nAre you ready to begin your adventure?\r\n=> /adventure Enter\r\n=> /about About", banner = BANNER),
+        format!("{banner}\r\n\
+        You have reached the enchanted land of Namushul.\r\n\r\n\
+        Are you ready to begin your adventure?\r\n\
+        => /adventure Enter\r\n\
+        {}\
+        => /about About", account_link, banner = BANNER),
     )
 }
-
-// TODO: => set-name 📝 Set name\r\n
 
 fn bastow(user: User) -> Response {
     Response::success(
@@ -93,9 +100,20 @@ impl Application {
             Err(_) => return Response::temporary_failure("Failed to connect to database".into()),
         };
 
+        let user = match &request.peer_fingerprint {
+            Some(fingerprint) => {
+                match storage.get_user(fingerprint) {
+                    Ok(user) => Some(user),
+                    Err(storage::Error::NotFound) => None,
+                    Err(_) => return Response::temporary_failure("Failed to get user".into()),
+                }
+            }
+            None => None
+        };
+
         match path_segments[..] {
             [""] | [] => {
-                return serve_landing();
+                return serve_landing(user);
             }
             ["about"] => {
                 let user_count = match storage.count_users() {
@@ -122,16 +140,11 @@ impl Application {
             }
         };
 
-        let user = match storage.get_user(fingerprint) {
-            Ok(user) => Some(user),
-            Err(storage::Error::NotFound) => None,
-            Err(_) => return Response::temporary_failure("Failed to get/create user".into()),
-        };
         eprintln!("User: {:?}", user);
         let user = match user {
             Some(user) => user,
             None => {
-                match request.query {
+                match request.query.clone() {
                     None => return Response::input("Choose a name for your character".to_owned()),
                     Some(name) => {
                         match storage.create_user(fingerprint, name) {
@@ -181,6 +194,22 @@ impl Application {
                 match storage.update_location_id(user, locations::BASTOW_WOODLANDS) {
                     Ok(user) => status_page(user),
                     Err(_) => Response::temporary_failure("Failed to update user".into())
+                }
+            }
+            ["account"] =>
+                Response::success(
+                    MediaType::gemini(Some(Language::english())),
+                    format!("### Account\r\nName: {}\r\n### Actions\r\n=> /account/set-name 📝 Set name", user.name),
+                ),
+            ["account", "set-name"] => {
+                match request.query {
+                    None =>Response::input("Choose a name".to_owned()),
+                    Some(name) => {
+                        match storage.update_name(user, name) {
+                            Ok(_user) => Response::redirect_temporary("/account".to_owned()),
+                            Err(_) => Response::temporary_failure("Failed to update user".into())
+                        }
+                    }
                 }
             }
             _ => Response::not_found("".to_owned())
