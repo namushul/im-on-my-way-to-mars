@@ -36,10 +36,20 @@ impl From<postgres::Error> for Error {
 impl Storage {
     // TODO: db pooling
     pub fn new() -> Result<Storage, Error> {
-        let host = env::var("POSTGRES_HOST").unwrap_or("localhost".to_string());
-        let user = env::var("POSTGRES_USER").unwrap_or("postgres".to_string());
-        let password = env::var("POSTGRES_PASSWORD").unwrap_or("postgres".to_string());
+        let host = env::var("POSTGRES_HOST").unwrap_or("localhost".to_owned());
+        let user = env::var("POSTGRES_USER").unwrap_or("postgres".to_owned());
+        let password = env::var("POSTGRES_PASSWORD").unwrap_or("postgres".to_owned());
         Ok(Storage { client: Client::connect(format!("host={} user={} password={}", host, user, password).as_str(), NoTls)? })
+    }
+
+    pub fn count_users(&mut self) -> Result<i64, Error> {
+        match self.client.query("select count(*) from users", &[])?.first() {
+            Some(row) => {
+                let count = row.get(0);
+                Ok(count)
+            }
+            None => Err(Error::NotFound)
+        }
     }
 
     pub fn create_user(&mut self, fingerprint: &[u8], name: String) -> Result<User, Error> {

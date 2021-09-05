@@ -6,6 +6,7 @@ mod application;
 mod gemini;
 mod response;
 mod storage;
+mod duration;
 
 #[derive(StructOpt, Debug)]
 #[structopt()]

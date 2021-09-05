@@ -4,7 +4,7 @@ pub struct Language(String);
 
 impl Language {
     pub fn english() -> Self {
-        Language("en".to_string())
+        Language("en".to_owned())
     }
 }
 
@@ -13,8 +13,8 @@ pub struct MediaType(String);
 impl MediaType {
     pub fn gemini(language: Option<Language>) -> Self {
         match language {
-            Some(language) => MediaType(format!("text/gemini; lang={}", language.0).to_string()),
-            None => MediaType("text/gemini".to_string())
+            Some(language) => MediaType(format!("text/gemini; lang={}", language.0).to_owned()),
+            None => MediaType("text/gemini".to_owned())
         }
     }
 }

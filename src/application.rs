@@ -2,16 +2,25 @@
 
 use std::env;
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use url::Url;
 
+use crate::duration::Humanize;
 use crate::response::{Language, MediaType, Response};
 use crate::storage::{locations, Storage, User};
 use crate::storage;
 
 #[derive(Debug)]
-pub struct Server {}
+pub struct Application {
+    start_time: Instant,
+}
+
+impl Application {
+    pub fn new(start_time: Instant) -> Self {
+        Self { start_time }
+    }
+}
 
 #[derive(Debug)]
 pub struct Request {
@@ -61,14 +70,14 @@ fn status_page(user: User) -> Response {
 }
 
 
-impl Server {
+impl Application {
     pub fn handle_request(&self, request: Request) -> Response {
         eprintln!("Request: {}", request.url);
         eprintln!("Request-path: {}", request.url.path());
         eprintln!("Request-query: {:?}", request.url.query_pairs().map(|(k, v)| { format!("{}: {}", k, v) }).collect::<Vec<String>>());
         eprintln!("Request-query: {:?}", request.query);
 
-        let simulate_latency = env::var("SIMULATE_LATENCY").unwrap_or("false".to_string());
+        let simulate_latency = env::var("SIMULATE_LATENCY").unwrap_or("false".to_owned());
         if simulate_latency == "true" {
             sleep(Duration::from_secs(1));
         }
@@ -79,32 +88,38 @@ impl Server {
         };
         eprintln!("{:?}", path_segments);
 
+        let mut storage = match Storage::new() {
+            Ok(storage) => storage,
+            Err(_) => return Response::temporary_failure("Failed to connect to database".into()),
+        };
+
         match path_segments[..] {
             [""] | [] => {
-                return serve_landing()
+                return serve_landing();
             }
             ["about"] => {
-                let user_count = "1337";
-                let last_activity = "1337 minutes ago";
-                let uptime = "1337 minutes";
+                let user_count = match storage.count_users() {
+                    Ok(count) => count,
+                    Err(_) => return Response::temporary_failure("Failed to count users".into()),
+                };
+                let fields = [
+                    format!("👥 Users: {}", user_count),
+                    // format!("🕐 Activity: {} ago", "1337 seconds"),
+                    format!("🕗 Uptime: {}", self.start_time.elapsed().humanize()),
+                ];
                 return Response::success(
                     MediaType::gemini(Some(Language::english())),
-                    format!("### About\r\n👥 Users: {} · 🕐 Activity: {} ago · 🕗 Uptime: {}\r\n", user_count, last_activity, uptime),
-                )
-            },
+                    format!("### About\r\n{}\r\n", fields.join(" · ")),
+                );
+            }
             _ => {}
         }
 
         let fingerprint = &match request.peer_fingerprint {
             Some(f) => f,
             None => {
-                return Response::client_certificate_required("Hello brave traveler. To venture further into this land you must present a certificate.".to_string());
+                return Response::client_certificate_required("Hello brave traveler. To venture further into this land you must present a certificate.".to_owned());
             }
-        };
-
-        let mut storage = match Storage::new() {
-            Ok(storage) => storage,
-            Err(_) => return Response::temporary_failure("Failed to connect to database".into()),
         };
 
         let user = match storage.get_user(fingerprint) {
@@ -117,7 +132,7 @@ impl Server {
             Some(user) => user,
             None => {
                 match request.query {
-                    None => return Response::input("Choose a name for your character".to_string()),
+                    None => return Response::input("Choose a name for your character".to_owned()),
                     Some(name) => {
                         match storage.create_user(fingerprint, name) {
                             Ok(user) => user,
@@ -134,43 +149,43 @@ impl Server {
             }
             ["adventure", "fight"] => {
                 let health = user.health - 1;
-                if health < 0 { return Response::redirect_temporary("/adventure".to_string()); }
+                if health < 0 { return Response::redirect_temporary("/adventure".to_owned()); }
                 match storage.update_health(user, health) {
-                    Ok(_user) => Response::redirect_temporary("/adventure".to_string()),
+                    Ok(_user) => Response::redirect_temporary("/adventure".to_owned()),
                     Err(_) => Response::temporary_failure("Failed to update user".into())
                 }
             }
             ["adventure", "rest"] => {
                 let health = user.max_health;
                 match storage.update_health(user, health) {
-                    Ok(_user) => Response::redirect_temporary("/adventure".to_string()),
+                    Ok(_user) => Response::redirect_temporary("/adventure".to_owned()),
                     Err(_) => Response::temporary_failure("Failed to update user".into())
                 }
             }
             ["adventure", "travel", destination_id] => {
                 let destination_id = match destination_id.parse::<i32>() {
                     Ok(destination_id) => destination_id,
-                    Err(_) => return Response::bad_request("Destination must be an integer".to_string())
+                    Err(_) => return Response::bad_request("Destination must be an integer".to_owned())
                 };
                 match user.location_id {
                     locations::BASTOW => {
                         if destination_id != locations::BASTOW_WOODLANDS {
-                            return Response::bad_request("Invalid destination".to_string());
+                            return Response::bad_request("Invalid destination".to_owned());
                         }
                     }
                     locations::BASTOW_WOODLANDS => {
                         if destination_id != locations::BASTOW {
-                            return Response::bad_request("Invalid destination".to_string());
+                            return Response::bad_request("Invalid destination".to_owned());
                         }
                     }
-                    _ => return Response::temporary_failure("Invalid user location".to_string())
+                    _ => return Response::temporary_failure("Invalid user location".to_owned())
                 }
                 match storage.update_location_id(user, destination_id) {
-                    Ok(_user) => Response::redirect_temporary("/adventure".to_string()),
+                    Ok(_user) => Response::redirect_temporary("/adventure".to_owned()),
                     Err(_) => Response::temporary_failure("Failed to update user".into())
                 }
             }
-            _ => Response::not_found("".to_string())
+            _ => Response::not_found("".to_owned())
         }
     }
 }
