@@ -46,8 +46,8 @@ fn bastow(user: User) -> Response {
         format!("\
         ### {name}\r\nHP: {health}/{max_health}\r\n\
         ### Bastow \r\nYou are in the small port town of Bastow. The town has an inn. A small gravel path leads out of town and into the forest.\r\n\
-        ### Travel\r\n=> /adventure/travel/{bastow_woodlands} 🌳 Follow the path into the forest.\r\n\
-        ### Actions\r\n=> /adventure/rest 🛏 Rest at the inn.", name = user.name, health = user.health, max_health = user.max_health, bastow_woodlands = locations::BASTOW_WOODLANDS),
+        ### Travel\r\n=> /adventure/bastow-woodlands 🌳 Follow the path into the forest.\r\n\
+        ### Actions\r\n=> /adventure/rest 🛏 Rest at the inn.", name = user.name, health = user.health, max_health = user.max_health),
     )
 }
 
@@ -57,8 +57,8 @@ fn bastow_woodlands(user: User) -> Response {
         format!("\
         ### {name}\r\nHP: {health}/{max_health}\r\n\
         ### Bastow Woodlands \r\nYou are in Bastow Woodland. You see nothing of interest.\r\n\
-        ### Travel\r\n=> /adventure/travel/{bastow} 👣 Go back to Bastow.\r\n\
-        ### Actions\r\n=> /adventure/fight 👊 Fight slimes.", name = user.name, health = user.health, max_health = user.max_health, bastow = locations::BASTOW),
+        ### Travel\r\n=> /adventure/bastow 👣 Go back to Bastow.\r\n\
+        ### Actions\r\n=> /adventure/fight 👊 Fight slimes.", name = user.name, health = user.health, max_health = user.max_health),
     )
 }
 
@@ -162,26 +162,24 @@ impl Application {
                     Err(_) => Response::temporary_failure("Failed to update user".into())
                 }
             }
-            ["adventure", "travel", destination_id] => {
-                let destination_id = match destination_id.parse::<i32>() {
-                    Ok(destination_id) => destination_id,
-                    Err(_) => return Response::bad_request("Destination must be an integer".to_owned())
-                };
-                match user.location_id {
-                    locations::BASTOW => {
-                        if destination_id != locations::BASTOW_WOODLANDS {
-                            return Response::bad_request("Invalid destination".to_owned());
-                        }
-                    }
-                    locations::BASTOW_WOODLANDS => {
-                        if destination_id != locations::BASTOW {
-                            return Response::bad_request("Invalid destination".to_owned());
-                        }
-                    }
-                    _ => return Response::temporary_failure("Invalid user location".to_owned())
+            ["adventure", "bastow"] => {
+                if user.location_id == locations::BASTOW {
+                    return status_page(user);
                 }
-                match storage.update_location_id(user, destination_id) {
-                    Ok(_user) => Response::redirect_temporary("/adventure".to_owned()),
+                if user.location_id != locations::BASTOW_WOODLANDS {
+                    return Response::bad_request("Invalid destination".to_owned());
+                }
+                match storage.update_location_id(user, locations::BASTOW) {
+                    Ok(user) => status_page(user),
+                    Err(_) => Response::temporary_failure("Failed to update user".into())
+                }
+            }
+            ["adventure", "bastow-woodlands"] => {
+                if user.location_id == locations::BASTOW_WOODLANDS {
+                    return status_page(user);
+                }
+                match storage.update_location_id(user, locations::BASTOW_WOODLANDS) {
+                    Ok(user) => status_page(user),
                     Err(_) => Response::temporary_failure("Failed to update user".into())
                 }
             }
